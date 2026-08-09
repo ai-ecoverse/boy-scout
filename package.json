@@ -1,0 +1,33 @@
+{
+  "name": "@ai-ecoverse/boy-scout",
+  "version": "1.0.0",
+  "description": "Leave the campsite cleaner than you found it — enforce the boy-scout rule on your tech-debt lists.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "boy-scout": "bin/boy-scout.js"
+  },
+  "files": [
+    "action.yml",
+    "bin",
+    "src"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ai-ecoverse/boy-scout"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "github-action",
+    "technical-debt",
+    "boy-scout-rule",
+    "ratchet",
+    "lint",
+    "code-quality"
+  ]
+}

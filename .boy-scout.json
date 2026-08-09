@@ -1,0 +1,16 @@
+{
+  // This repo gates itself. The campsite is currently spotless — which is the
+  // only honest starting state for a tool that tells other people to tidy up.
+  "lists": [
+    {
+      "name": "campsite",
+      "source": "campsite.json",
+      "format": "json-keys",
+      "fix": [
+        "Fix: clear the violations that put this file on the list, then remove",
+        "its entry from campsite.json in this same PR."
+      ],
+      "addFix": "Fix: fix the code instead of adding the file to campsite.json."
+    }
+  ]
+}

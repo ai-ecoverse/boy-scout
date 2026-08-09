@@ -1,0 +1,36 @@
+name: 'Boy Scout'
+description: 'Leave the campsite cleaner than you found it — enforce the boy-scout rule on your tech-debt lists.'
+author: 'AI Ecoverse'
+
+branding:
+  icon: 'award'
+  color: 'green'
+
+inputs:
+  config:
+    description: 'Path to the boy-scout config file.'
+    required: false
+    default: '.boy-scout.json'
+  base-ref:
+    description: >-
+      Ref to diff against. Defaults to origin/$GITHUB_BASE_REF on pull_request
+      events, then $BASE_REF, then origin/main.
+    required: false
+
+outputs:
+  passed:
+    description: '"true" when no changed file is on a debt list and no list grew.'
+    value: ${{ steps.gate.outputs.passed }}
+  violations:
+    description: 'Number of changed files still sitting on a debt list.'
+    value: ${{ steps.gate.outputs.violations }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: gate
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/index.js"
+      env:
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_BASE_REF: ${{ inputs.base-ref }}
