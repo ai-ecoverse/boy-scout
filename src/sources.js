@@ -1,19 +1,31 @@
-// Turning a debt list on disk into a plain array of entries.
+// Turning a debt list into a plain array of entries.
 //
-// Three shapes cover every debt list we have met in the wild:
+// Two modes, and the difference matters:
 //
-//   json-keys  — a `{ "path/to/file.ts": 12, … }` ratchet baseline, where the
-//                keys are the offenders and the values are counts. This is the
-//                shape a "count may only go down" ratchet naturally produces.
-//   lines      — a newline-delimited list of paths or globs. `#` comments and
-//                blank lines are ignored.
-//   command    — anything else. The repo prints its own debt list on stdout,
-//                one entry per line, which lets a list live inside an
-//                arbitrary config file the action knows nothing about.
+//   Baseline mode — `source` points at a checked-in debt file (`json-keys`,
+//                   `lines`). The list is frozen state, so BOTH rules apply:
+//                   touching a listed file fails, and growing the list fails.
+//
+//   Live mode     — `command` runs a linter and its output IS the list
+//                   (`paths`, `eslint-json`, `biome-json`, `sarif`,
+//                   `checkstyle`, `tsc`). No baseline file to maintain, and
+//                   the rule becomes "any file you touch must be clean".
+//                   The growth check cannot run — there is no addressable
+//                   file at the base ref to diff against.
 
+import {
+  FORMATS,
+  LINTER_FORMATS,
+  parseBiomeJson,
+  parseCheckstyle,
+  parseEslintJson,
+  parseSarif,
+  parseTsc,
+} from './formats.js';
 import { parse } from './json.js';
+import { parsePaths } from './paths.js';
 
-export const FORMATS = ['json-keys', 'lines'];
+export { FORMATS, LINTER_FORMATS };
 
 /** Keys of a `{ path: count }` baseline object. Non-objects yield []. */
 export function parseJsonKeys(text) {
@@ -31,17 +43,34 @@ export function parseLines(text) {
     .filter((l) => l.length > 0 && !l.startsWith('#'));
 }
 
-/** Apply the named format to raw file contents. Unknown format → throws. */
-export function parseByFormat(format, text) {
-  if (format === 'json-keys') return parseJsonKeys(text);
-  if (format === 'lines') return parseLines(text);
-  throw new Error(`unknown format "${format}" (expected one of: ${FORMATS.join(', ')})`);
+const PARSERS = {
+  'json-keys': parseJsonKeys,
+  lines: parseLines,
+  paths: parsePaths,
+  'eslint-json': parseEslintJson,
+  'biome-json': parseBiomeJson,
+  sarif: parseSarif,
+  checkstyle: parseCheckstyle,
+  tsc: parseTsc,
+};
+
+/**
+ * Apply the named format to raw text.
+ * @param {object} [ctx] `{ cwd, isFile, ignore, severity }` for the parsers
+ *                       that need to resolve paths or filter findings.
+ */
+export function parseByFormat(format, text, ctx = {}) {
+  const parser = PARSERS[format];
+  if (!parser) {
+    throw new Error(`unknown format "${format}" (expected one of: ${FORMATS.join(', ')})`);
+  }
+  return parser(text, ctx);
 }
 
 /**
- * Normalize one `lists[]` entry from the config into a validated descriptor.
- * Throws with a pointed message on malformed input — a misconfigured gate that
- * silently passes is worse than no gate.
+ * Normalize one `lists[]` entry into a validated descriptor.
+ * Throws with a pointed message on malformed input — a misconfigured gate
+ * that silently passes is worse than no gate.
  */
 export function normalizeList(raw, index) {
   const at = `lists[${index}]`;
@@ -57,20 +86,40 @@ export function normalizeList(raw, index) {
   if (hasFile === hasCommand) {
     throw new Error(`${at} ("${name}") needs exactly one of "source" or "command"`);
   }
-  const format = raw.format ?? 'json-keys';
-  if (hasFile && !FORMATS.includes(format)) {
+
+  // A checked-in debt file defaults to the ratchet-baseline shape; a command's
+  // output defaults to plain lines, which is what a bespoke script prints.
+  const format = raw.format ?? (hasFile ? 'json-keys' : 'lines');
+  if (!FORMATS.includes(format)) {
     throw new Error(
       `${at} ("${name}") has unknown format "${format}" (expected one of: ${FORMATS.join(', ')})`
     );
   }
+  // A linter format describes tool OUTPUT. Pointing one at a checked-in file
+  // is legal (a stored report), but pointing a baseline format at a command is
+  // almost always a mistake worth naming.
+  if (hasCommand && (format === 'json-keys')) {
+    throw new Error(
+      `${at} ("${name}") uses format "json-keys" with "command"; a command's output is ` +
+        'a report, not a baseline — use "lines" or a linter format'
+    );
+  }
+
+  const severity = raw.severity ?? 'any';
+  if (severity !== 'any' && severity !== 'error') {
+    throw new Error(`${at} ("${name}") has unknown severity "${severity}" (expected any | error)`);
+  }
+
   return {
     name,
     source: hasFile ? raw.source : null,
     command: hasCommand ? raw.command : null,
-    format: hasFile ? format : null,
-    // A frozen list may not grow vs the base ref. Opt out for a list that is
-    // legitimately allowed to gain entries (a generated inventory, say).
-    frozen: raw.frozen !== false,
+    format,
+    severity,
+    ignore: Array.isArray(raw.ignore) ? raw.ignore.filter((s) => typeof s === 'string') : [],
+    // Only a checked-in file can be diffed against the base ref, so a
+    // command-sourced list is never frozen regardless of what is configured.
+    frozen: hasFile && raw.frozen !== false,
     fix: toText(raw.fix),
     addFix: toText(raw.addFix),
   };

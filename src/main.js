@@ -4,7 +4,7 @@
 
 import { changedFiles, readWorkingFile, resolveBaseRef, runCommand, showAtRef } from './git.js';
 import { parse } from './json.js';
-import { normalizeConfig, parseByFormat, parseLines } from './sources.js';
+import { normalizeConfig, parseByFormat } from './sources.js';
 import { formatReport, inspect } from './run.js';
 
 export const DEFAULT_CONFIG_PATH = '.boy-scout.json';
@@ -67,16 +67,24 @@ export function main({ cwd = process.cwd(), configPath, baseRef, env = process.e
     };
   }
 
+  const ctx = (list) => ({ cwd, severity: list.severity, ignore: list.ignore });
+
   const readCurrent = (list) => {
     if (list.command) {
-      const out = runCommand(list.command, cwd);
-      if (out === null) return { error: `command failed: ${list.command}` };
-      return { entries: parseLines(out) };
+      // A linter exits non-zero precisely when it has findings — which is the
+      // interesting case — so the output is used whenever there IS output.
+      const { stdout, failed } = runCommand(list.command, cwd);
+      if (failed && !stdout.trim()) return { error: `command failed: ${list.command}` };
+      try {
+        return { entries: parseByFormat(list.format, stdout, ctx(list)) };
+      } catch (err) {
+        return { error: `${list.name}: ${err.message}` };
+      }
     }
     const text = readWorkingFile(list.source, cwd);
     if (text === null) return { error: `missing file: ${list.source}` };
     try {
-      return { entries: parseByFormat(list.format, text) };
+      return { entries: parseByFormat(list.format, text, ctx(list)) };
     } catch (err) {
       return { error: `${list.source}: ${err.message}` };
     }
@@ -89,7 +97,7 @@ export function main({ cwd = process.cwd(), configPath, baseRef, env = process.e
     const text = showAtRef(base, list.source, cwd);
     if (text === null) return { entries: [], readable: false };
     try {
-      return { entries: parseByFormat(list.format, text), readable: true };
+      return { entries: parseByFormat(list.format, text, ctx(list)), readable: true };
     } catch {
       return { entries: [], readable: false };
     }

@@ -96,10 +96,35 @@ describe('normalizeList', () => {
     assert.throws(() => normalizeList({ ...base, format: 'toml' }, 0), /unknown format/);
   });
 
-  it('does not require a format for a command source', () => {
+  it('defaults a command source to lines, and can never be frozen', () => {
     const l = normalizeList({ name: 'x', command: 'ls' }, 0);
     assert.equal(l.source, null);
-    assert.equal(l.format, null);
+    assert.equal(l.format, 'lines');
+    // No addressable file at the base ref, so growth cannot be measured —
+    // frozen is forced off even if the config asks for it.
+    assert.equal(l.frozen, false);
+    assert.equal(normalizeList({ name: 'x', command: 'ls', frozen: true }, 0).frozen, false);
+  });
+
+  it('accepts linter formats on a command source', () => {
+    for (const format of ['paths', 'eslint-json', 'biome-json', 'sarif', 'checkstyle', 'tsc']) {
+      assert.equal(normalizeList({ name: 'x', command: 'lint', format }, 0).format, format);
+    }
+  });
+
+  it('rejects the baseline format json-keys on a command source', () => {
+    assert.throws(
+      () => normalizeList({ name: 'x', command: 'lint', format: 'json-keys' }, 0),
+      /a report, not a baseline/
+    );
+  });
+
+  it('validates severity', () => {
+    assert.equal(normalizeList({ name: 'x', command: 'lint', severity: 'error' }, 0).severity, 'error');
+    assert.throws(
+      () => normalizeList({ name: 'x', command: 'lint', severity: 'nit' }, 0),
+      /unknown severity/
+    );
   });
 });
 

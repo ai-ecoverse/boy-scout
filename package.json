@@ -1,6 +1,6 @@
 {
   "name": "@ai-ecoverse/boy-scout",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Leave the campsite cleaner than you found it — enforce the boy-scout rule on your tech-debt lists.",
   "license": "Apache-2.0",
   "type": "module",

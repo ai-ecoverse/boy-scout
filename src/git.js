@@ -60,7 +60,14 @@ export function readWorkingFile(path, cwd) {
   }
 }
 
-/** Run a debt-list command and return its stdout, or null if it failed. */
+/**
+ * Run a debt-list command. Returns `{ stdout, failed }`.
+ *
+ * `failed` is reported rather than swallowed, but a non-zero exit is NOT
+ * treated as an error by callers on its own: a linter exits non-zero
+ * precisely when it found something, which is the case we care about. Only a
+ * non-zero exit with no output at all means the command genuinely broke.
+ */
 export function runCommand(command, cwd) {
   const r = spawnSync(command, {
     cwd,
@@ -68,6 +75,6 @@ export function runCommand(command, cwd) {
     shell: true,
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (r.error || r.status !== 0) return null;
-  return r.stdout;
+  if (r.error) return { stdout: '', failed: true };
+  return { stdout: r.stdout ?? '', failed: r.status !== 0 };
 }
